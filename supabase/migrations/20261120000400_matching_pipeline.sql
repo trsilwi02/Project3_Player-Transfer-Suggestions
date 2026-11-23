@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION fn_candidates(
 RETURNS TABLE (
   player_id integer,
   player_name varchar(100),
-  position varchar(10),
+  "position" varchar(10),
   age integer,
   club_id integer,
   club_name varchar(100),
@@ -355,7 +355,7 @@ CREATE OR REPLACE FUNCTION fn_alternatives(
 RETURNS TABLE (
   player_id integer,
   player_name varchar(100),
-  position varchar(10),
+  "position" varchar(10),
   age integer,
   club_name varchar(100),
   fee_est numeric,
