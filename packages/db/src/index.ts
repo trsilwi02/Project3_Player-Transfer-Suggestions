@@ -1,2 +1,2 @@
-export * from './pool.js';
-export * from './transaction.js';
+export * from './pool';
+export * from './transaction';

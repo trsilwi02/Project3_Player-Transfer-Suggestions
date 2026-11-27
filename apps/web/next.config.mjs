@@ -1,10 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  distDir: '.next-build',
   transpilePackages: ['@project3/shared', '@project3/db'],
-  experimental: {
-    serverComponentsExternalPackages: ['pg', 'bcryptjs'],
-  },
+  serverExternalPackages: ['pg', 'bcryptjs', 'argon2'],
 };
 
 export default nextConfig;

@@ -8,7 +8,7 @@ import {
 export class RequirementService {
   static async listByUser(userId: number): Promise<ClubRequirement[]> {
     const res = await query(
-      `SELECT r.id, r.user_id, r.club_id, cl.name as club_name, r.position,
+      `SELECT r.id, r.user_id, r.name, r.club_id, cl.name as club_name, r.position,
               r.min_age, r.max_age, r.salary_limit, r.budget, r.priority,
               r.matching_params, r.created_at, r.updated_at,
               coalesce(json_agg(rr.role_id) FILTER (WHERE rr.role_id IS NOT NULL), '[]') as role_ids
@@ -33,7 +33,7 @@ export class RequirementService {
     }
 
     const res = await query(
-      `SELECT r.id, r.user_id, r.club_id, cl.name as club_name, r.position,
+      `SELECT r.id, r.user_id, r.name, r.club_id, cl.name as club_name, r.position,
               r.min_age, r.max_age, r.salary_limit, r.budget, r.priority,
               r.matching_params, r.created_at, r.updated_at,
               coalesce(json_agg(rr.role_id) FILTER (WHERE rr.role_id IS NOT NULL), '[]') as role_ids
@@ -57,11 +57,12 @@ export class RequirementService {
     return withTransaction(async (client) => {
       const insRes = await client.query(
         `INSERT INTO club_requirement(
-           user_id, club_id, position, min_age, max_age, salary_limit, budget, priority, matching_params
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         RETURNING id, user_id, club_id, position, min_age, max_age, salary_limit, budget, priority, matching_params, created_at, updated_at`,
+           user_id, name, club_id, position, min_age, max_age, salary_limit, budget, priority, matching_params
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id, user_id, name, club_id, position, min_age, max_age, salary_limit, budget, priority, matching_params, created_at, updated_at`,
         [
           userId,
+          data.name || `Nhu cầu ${data.position}`,
           data.clubId || null,
           data.position,
           data.minAge || null,
@@ -110,6 +111,10 @@ export class RequirementService {
       if (data.clubId !== undefined) {
         params.push(data.clubId);
         updates.push(`club_id = $${pIdx++}`);
+      }
+      if (data.name !== undefined) {
+        params.push(data.name);
+        updates.push(`name = $${pIdx++}`);
       }
       if (data.position !== undefined) {
         params.push(data.position);
@@ -182,6 +187,7 @@ export class RequirementService {
     return {
       id: row.id,
       userId: row.user_id,
+      name: row.name,
       clubId: row.club_id,
       clubName: row.club_name,
       position: row.position,

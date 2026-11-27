@@ -27,6 +27,23 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (err: any) {
+    const connectionErrors = Array.isArray(err?.errors)
+      ? err.errors.map((cause: any) => ({
+          code: cause?.code,
+          syscall: cause?.syscall,
+          address: cause?.address,
+          port: cause?.port,
+        }))
+      : [];
+    console.error('[auth.register] Request failed', {
+      name: err?.name,
+      code: err?.code,
+      message: err?.message,
+      connectionErrors,
+    });
+    if (err?.code === 'ECONNREFUSED' || connectionErrors.some((cause: any) => cause.code === 'ECONNREFUSED')) {
+      return errorResponse('DATABASE_UNAVAILABLE', 'Không kết nối được cơ sở dữ liệu. Vui lòng thử lại sau.', 503);
+    }
     return errorResponse(
       err.code || 'REGISTER_FAILED',
       err.message || 'Đăng ký tài khoản thất bại',

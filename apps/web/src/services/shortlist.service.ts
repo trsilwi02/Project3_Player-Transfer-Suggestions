@@ -2,7 +2,7 @@ import { query, withTransaction } from '@project3/db';
 import { ShortlistAdd, ShortlistItem, ShortlistUpdate } from '@project3/shared';
 
 export class ShortlistService {
-  static async listByUser(userId: number, requirementId?: number): Promise<ShortlistItem[]> {
+  static async listByUser(userId: number, requirementId?: number, db: any = { query }): Promise<ShortlistItem[]> {
     const params: any[] = [userId];
     let reqFilter = '';
 
@@ -11,7 +11,7 @@ export class ShortlistService {
       reqFilter = 'AND sl.requirement_id = $2';
     }
 
-    const res = await query(
+    const res = await db.query(
       `SELECT sl.id, sl.user_id, sl.requirement_id, sl.note, sl.created_at,
               pc.id AS player_id, pc.name AS player_name, pc.age, pc.position,
               pc.club_name, pc.contract_end_date,
@@ -37,10 +37,21 @@ export class ShortlistService {
 
   static async add(userId: number, data: ShortlistAdd, clientIp: string): Promise<ShortlistItem> {
     return withTransaction(async (client) => {
+      const listName = 'Watchlist';
+
+      // Validate the requirement before inserting so invalid ownership never
+      // reaches the shortlist write path.
+      if (data.requirementId) {
+        const req = await client.query('SELECT id FROM club_requirement WHERE id = $1 AND user_id = $2', [data.requirementId, userId]);
+        if (!req.rowCount) throw { code: 'REQUIREMENT_NOT_FOUND', message: 'Không tìm thấy nhu cầu tuyển trạch', status: 404 };
+      }
+
       // Check duplicate
       const checkRes = await client.query(
-        `SELECT id FROM shortlist WHERE user_id = $1 AND player_id = $2 AND coalesce(requirement_id, 0) = coalesce($3, 0)`,
-        [userId, data.playerId, data.requirementId || 0]
+        `SELECT id FROM shortlist
+         WHERE user_id = $1 AND list_name = $2 AND player_id = $3
+           AND coalesce(requirement_id, 0) = coalesce($4, 0)`,
+        [userId, listName, data.playerId, data.requirementId || 0]
       );
 
       if (checkRes.rows.length > 0) {
@@ -52,14 +63,15 @@ export class ShortlistService {
       }
 
       const insRes = await client.query(
-        `INSERT INTO shortlist (user_id, player_id, requirement_id, note)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO shortlist (user_id, list_name, player_id, requirement_id, note)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING id`,
-        [userId, data.playerId, data.requirementId || null, data.note || null]
+        [userId, listName, data.playerId, data.requirementId || null, data.note || null]
       );
 
-      const items = await ShortlistService.listByUser(userId);
+      const items = await ShortlistService.listByUser(userId, undefined, client);
       const created = items.find((i) => i.id === insRes.rows[0].id);
+      if (!created) throw new Error('Shortlist item was inserted but could not be loaded');
       return created!;
     }, { userId, clientIp });
   }

@@ -84,16 +84,6 @@ export class PlayerService {
       pIdx++;
     }
 
-    // Cursor pagination (keyset by id)
-    if (filter.cursor) {
-      const cursorId = parseInt(filter.cursor, 10);
-      if (!isNaN(cursorId)) {
-        params.push(cursorId);
-        conditions.push(`id < $${pIdx}`);
-        pIdx++;
-      }
-    }
-
     const sortColumn = {
       market_value: 'market_value',
       name: 'name',
@@ -103,6 +93,20 @@ export class PlayerService {
     }[filter.sortBy] || 'market_value';
 
     const sortDir = filter.sortOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+    if (filter.cursor) {
+      try {
+        const decoded = JSON.parse(Buffer.from(filter.cursor, 'base64url').toString('utf8')) as { value: string | number | null; id: number };
+        if (Number.isInteger(decoded.id) && (decoded.value === null || ['string', 'number'].includes(typeof decoded.value))) {
+          params.push(decoded.value, decoded.id);
+          const valueIdx = pIdx++, idIdx = pIdx++;
+          const op = sortDir === 'ASC' ? '>' : '<';
+          conditions.push(decoded.value === null
+            ? `(${sortColumn} IS NULL AND id < $${idIdx})`
+            : `((${sortColumn} ${op} $${valueIdx}) OR (${sortColumn} = $${valueIdx} AND id < $${idIdx}) OR ${sortColumn} IS NULL)`);
+        }
+      } catch { /* Ignore malformed cursors and return the first page. */ }
+    }
 
     params.push(filter.limit + 1);
     const limitParamIdx = pIdx;
@@ -117,7 +121,8 @@ export class PlayerService {
     const res = await query(sql, params);
     const hasMore = res.rows.length > filter.limit;
     const items = hasMore ? res.rows.slice(0, filter.limit) : res.rows;
-    const nextCursor = hasMore ? items[items.length - 1].id.toString() : null;
+    const last = items[items.length - 1];
+    const nextCursor = hasMore ? Buffer.from(JSON.stringify({ value: last[sortColumn], id: last.id })).toString('base64url') : null;
 
     return {
       items: items.map(this.mapPlayerRow),
@@ -146,8 +151,7 @@ export class PlayerService {
 
     // Injury history (last 24 months)
     const injuryRes = await query(
-      `SELECT id, injury_type, body_area, start_date, end_date, days_missed, matches_missed,
-              recurrent_flag, record_status
+      `SELECT id, injury_type, body_part AS body_area, start_date, end_date, days_missed, record_status
        FROM injury_history
        WHERE player_id = $1 AND deleted_at IS NULL
        ORDER BY start_date DESC`,
@@ -156,10 +160,10 @@ export class PlayerService {
 
     // Market value history (24 months)
     const mvRes = await query(
-      `SELECT id, market_value, valuation_date, reliability_label, source
+      `SELECT id, value AS market_value, value_date AS valuation_date, reliability_label, source
        FROM market_value
        WHERE player_id = $1
-       ORDER BY valuation_date ASC`,
+       ORDER BY value_date ASC`,
       [playerId]
     );
 
@@ -205,7 +209,7 @@ export class PlayerService {
       contractType: row.contract_type,
       startDate: row.start_date,
       contractEndDate: row.contract_end_date,
-      monthsRemaining: row.months_remaining ? parseFloat(row.months_remaining) : null,
+      monthsRemaining: row.months_remaining !== null && row.months_remaining !== undefined ? parseFloat(row.months_remaining) : null,
       releaseClause: row.release_clause ? parseFloat(row.release_clause) : null,
       salaryPerYear: row.salary_per_year !== undefined && row.salary_per_year !== null
         ? parseFloat(row.salary_per_year)

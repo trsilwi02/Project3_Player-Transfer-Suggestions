@@ -5,10 +5,11 @@ import { getAuthUser } from '@/lib/auth';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const playerId = parseInt(params.id, 10);
+    const { id } = await params;
+    const playerId = parseInt(id, 10);
     if (isNaN(playerId)) {
       return errorResponse('INVALID_PLAYER_ID', 'ID cầu thủ không hợp lệ', 400);
     }
@@ -23,6 +24,11 @@ export async function GET(
 
     return successResponse(player);
   } catch (err: any) {
+    console.error('[players.detail] Request failed', {
+      name: err?.name,
+      code: err?.code,
+      message: err?.message,
+    });
     return errorResponse('PLAYER_DETAIL_FAILED', err.message, 500);
   }
 }

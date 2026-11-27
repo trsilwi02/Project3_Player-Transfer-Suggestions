@@ -8,10 +8,11 @@ import {
 import {
   generateRefreshToken,
   hashPassword,
+  needsPasswordRehash,
   hashRefreshToken,
   signAccessToken,
   verifyPassword,
-} from '../lib/auth.js';
+} from '../lib/auth';
 
 export class AuthService {
   static async register(data: RegisterRequest, clientIp: string): Promise<AuthTokens> {
@@ -31,48 +32,60 @@ export class AuthService {
 
     const passwordHash = await hashPassword(data.password);
 
-    return withTransaction(async (client) => {
-      const userRes = await client.query(
-        `INSERT INTO app_user (username, email, password_hash, role, status, locale)
-         VALUES ($1, $2, $3, $4, 'active', $5)
-         RETURNING id, username, email, role, locale, created_at`,
-        [data.username, data.email, passwordHash, data.role || 'scout', data.locale || 'vi']
-      );
+    try {
+      return await withTransaction(async (client) => {
+        const userRes = await client.query(
+          `INSERT INTO app_user (username, email, password_hash, role, status, locale)
+           VALUES ($1, $2, $3, $4, 'active', $5)
+           RETURNING id, username, email, role, locale, created_at`,
+          [data.username, data.email, passwordHash, 'scout', data.locale || 'vi']
+        );
 
-      const userRow = userRes.rows[0];
-      const user: AuthUser = {
-        id: userRow.id,
-        username: userRow.username,
-        email: userRow.email,
-        role: userRow.role,
-        locale: userRow.locale,
-        createdAt: userRow.created_at,
-      };
+        const userRow = userRes.rows[0];
+        const user: AuthUser = {
+          id: userRow.id,
+          username: userRow.username,
+          email: userRow.email,
+          role: userRow.role,
+          locale: userRow.locale,
+          createdAt: userRow.created_at,
+        };
 
-      const { token: rawRefreshToken, hash: tokenHash, expiresAt } = generateRefreshToken();
+        const { token: rawRefreshToken, hash: tokenHash, expiresAt } = generateRefreshToken();
 
-      await client.query(
-        `INSERT INTO refresh_token (user_id, token_hash, expires_at)
-         VALUES ($1, $2, $3)`,
-        [user.id, tokenHash, expiresAt]
-      );
+        await client.query(
+          `INSERT INTO refresh_token (user_id, token_hash, expires_at)
+           VALUES ($1, $2, $3)`,
+          [user.id, tokenHash, expiresAt]
+        );
 
-      const accessToken = signAccessToken(user);
+        const accessToken = signAccessToken(user);
 
-      return {
-        accessToken,
-        refreshToken: rawRefreshToken,
-        expiresIn: 900, // 15 mins
-        user,
-      };
-    }, { clientIp });
+        return {
+          accessToken,
+          refreshToken: rawRefreshToken,
+          expiresIn: 900, // 15 mins
+          user,
+        };
+      }, { clientIp });
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        if (error.constraint === 'app_user_email_key') {
+          throw { code: 'EMAIL_ALREADY_EXISTS', message: 'Email đã được sử dụng', status: 409 };
+        }
+        if (error.constraint === 'app_user_username_key') {
+          throw { code: 'USERNAME_ALREADY_EXISTS', message: 'Tên đăng nhập đã tồn tại', status: 409 };
+        }
+      }
+      throw error;
+    }
   }
 
   static async login(data: LoginRequest, clientIp: string): Promise<AuthTokens> {
     const userRes = await query(
       `SELECT id, username, email, password_hash, role, status, locale, created_at
        FROM app_user
-       WHERE (username = $1 OR email = $1) AND deleted_at IS NULL`,
+       WHERE username = $1 OR email = $1`,
       [data.usernameOrEmail]
     );
 
@@ -115,6 +128,10 @@ export class AuthService {
     const { token: rawRefreshToken, hash: tokenHash, expiresAt } = generateRefreshToken();
 
     await withTransaction(async (client) => {
+      if (needsPasswordRehash(userRow.password_hash)) {
+        const upgradedHash = await hashPassword(data.password);
+        await client.query('UPDATE app_user SET password_hash = $1 WHERE id = $2', [upgradedHash, user.id]);
+      }
       await client.query(
         `INSERT INTO refresh_token (user_id, token_hash, expires_at)
          VALUES ($1, $2, $3)`,
@@ -163,7 +180,21 @@ export class AuthService {
 
     const row = tokenRes.rows[0];
 
-    if (row.revoked_at !== null || new Date(row.expires_at) < new Date()) {
+    if (row.revoked_at !== null) {
+      await withTransaction(async (client) => {
+        await client.query(
+          `UPDATE refresh_token SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`,
+          [row.user_id]
+        );
+      }, { userId: row.user_id, clientIp });
+      throw {
+        code: 'REFRESH_TOKEN_REUSE_DETECTED',
+        message: 'Phát hiện refresh token cũ được sử dụng lại; toàn bộ phiên đã bị thu hồi',
+        status: 401,
+      };
+    }
+
+    if (new Date(row.expires_at) < new Date()) {
       throw {
         code: 'TOKEN_EXPIRED_OR_REVOKED',
         message: 'Refresh token đã hết hạn hoặc bị thu hồi',
@@ -191,18 +222,34 @@ export class AuthService {
     // Rotation: revoke old token and create new one
     const { token: newRawRefreshToken, hash: newTokenHash, expiresAt } = generateRefreshToken();
 
-    await withTransaction(async (client) => {
-      await client.query(
-        `UPDATE refresh_token SET revoked_at = now() WHERE id = $1`,
+    const rotated = await withTransaction(async (client) => {
+      const revoked = await client.query(
+        `UPDATE refresh_token SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL RETURNING id`,
         [row.id]
       );
+      if (!revoked.rowCount) {
+        await client.query(
+          `UPDATE refresh_token SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`,
+          [row.user_id]
+        );
+        return false;
+      }
 
       await client.query(
         `INSERT INTO refresh_token (user_id, token_hash, expires_at)
          VALUES ($1, $2, $3)`,
         [user.id, newTokenHash, expiresAt]
       );
+      return true;
     }, { userId: user.id, clientIp });
+
+    if (!rotated) {
+      throw {
+        code: 'REFRESH_TOKEN_REUSE_DETECTED',
+        message: 'Phát hiện refresh token cũ được sử dụng lại; toàn bộ phiên đã bị thu hồi',
+        status: 401,
+      };
+    }
 
     const accessToken = signAccessToken(user);
 

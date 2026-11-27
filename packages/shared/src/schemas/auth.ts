@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { USER_ROLES } from '../constants/positions.js';
 
 export const LoginRequestSchema = z.object({
   usernameOrEmail: z.string().min(3, 'Tên đăng nhập hoặc email tối thiểu 3 ký tự'),
@@ -17,8 +16,7 @@ export const RegisterRequestSchema = z.object({
     .max(50)
     .regex(/^[a-zA-Z0-9_]+$/, 'Tên đăng nhập chỉ gồm chữ cái, số và dấu gạch dưới'),
   email: z.string().email('Email không đúng định dạng'),
-  password: z.string().min(6, 'Mật khẩu tối thiểu 6 ký tự'),
-  role: z.enum(['scout', 'admin']).default('scout'),
+  password: z.string().min(12, 'Mật khẩu tối thiểu 12 ký tự'),
   locale: z.enum(['vi', 'en']).default('vi'),
 });
 

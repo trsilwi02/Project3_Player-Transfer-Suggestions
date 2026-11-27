@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MatchingParamsSchema } from './requirement.js';
+import { MatchingParamsSchema } from './requirement';
 
 export const MatchRunRequestSchema = z.object({
   requirementId: z.number().int().positive('ID nhu cầu không hợp lệ'),

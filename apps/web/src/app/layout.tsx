@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Link from 'next/link';
+import AuthNav from '@/components/auth-nav';
 
 export const metadata: Metadata = {
   title: 'Hệ thống thông tin hồ sơ cầu thủ & Hỗ trợ chuyển nhượng',
@@ -20,10 +21,10 @@ export default function RootLayout({
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div className="flex items-center space-x-8">
               <Link href="/" className="flex items-center space-x-2">
-                <span className="text-xl font-bold bg-gradient-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent">
+                <span className="text-base font-bold bg-gradient-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent sm:text-xl">
                   FOOTBALL TRANSFER DB
                 </span>
-                <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                <span className="hidden text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 sm:inline-flex">
                   V2 Engine
                 </span>
               </Link>
@@ -74,12 +75,7 @@ export default function RootLayout({
               </nav>
             </div>
 
-            <div className="flex items-center space-x-3">
-              <div className="hidden sm:flex items-center bg-slate-800/80 rounded-lg px-3 py-1.5 border border-slate-700 text-xs">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 mr-2 animate-pulse"></span>
-                <span>Role: Scout (Đầy đủ dữ liệu lương)</span>
-              </div>
-            </div>
+            <AuthNav />
           </div>
         </header>
 

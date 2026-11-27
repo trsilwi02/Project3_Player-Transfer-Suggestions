@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { RELIABILITY_LABELS } from '../constants/positions.js';
+import { RELIABILITY_LABELS } from '../constants/positions';
 
 export const PlayerQueryFilterSchema = z.object({
   q: z.string().optional(),

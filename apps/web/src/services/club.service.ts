@@ -32,7 +32,7 @@ export class ClubService {
     return res.rows;
   }
 
-  static async getClubDetail(clubId: number) {
+  static async getClubDetail(clubId: number, includeSalary = false) {
     const clubRes = await query(
       `SELECT id, name, country, league, founded_year, logo_url, record_status
        FROM club
@@ -45,7 +45,7 @@ export class ClubService {
     // Squad list
     const squadRes = await query(
       `SELECT p.id, p.name, p.position, fn_age(p.date_of_birth) as age, p.market_value,
-              c.start_date, c.end_date, c.salary_per_year, c.contract_type
+              c.start_date, c.end_date, ${includeSalary ? 'c.salary_per_year' : 'NULL::numeric AS salary_per_year'}, c.contract_type
        FROM contract c
        JOIN player p ON p.id = c.player_id
        WHERE c.club_id = $1 AND c.status = 'active' AND c.deleted_at IS NULL AND p.deleted_at IS NULL

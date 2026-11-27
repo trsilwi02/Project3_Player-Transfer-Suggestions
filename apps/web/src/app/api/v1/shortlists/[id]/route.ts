@@ -6,13 +6,14 @@ import { getAuthUser, getClientIp } from '@/lib/auth';
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = getAuthUser(request);
     if (!user) return errorResponse('UNAUTHORIZED', 'Vui lòng đăng nhập', 401);
 
-    const id = parseInt(params.id, 10);
+    const { id: rawId } = await params;
+    const id = parseInt(rawId, 10);
     if (isNaN(id)) return errorResponse('INVALID_ID', 'ID không hợp lệ', 400);
 
     const body = await request.json();
@@ -31,13 +32,14 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = getAuthUser(request);
     if (!user) return errorResponse('UNAUTHORIZED', 'Vui lòng đăng nhập', 401);
 
-    const id = parseInt(params.id, 10);
+    const { id: rawId } = await params;
+    const id = parseInt(rawId, 10);
     if (isNaN(id)) return errorResponse('INVALID_ID', 'ID không hợp lệ', 400);
 
     const clientIp = getClientIp(request);

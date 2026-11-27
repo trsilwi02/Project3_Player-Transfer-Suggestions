@@ -1,7 +1,6 @@
-import { query } from '@project3/db';
+import { query, withTransaction } from '@project3/db';
 import {
   AlternativeCandidate,
-  BreakdownScore,
   MatchExclusionItem,
   MatchResultItem,
   MatchRunDetail,
@@ -14,27 +13,23 @@ export class MatchingService {
     userId: number,
     overrideParams?: Partial<MatchingParams>
   ): Promise<{ runId: string }> {
-    const paramsJson = JSON.stringify(overrideParams || {});
-    const res = await query(
-      `SELECT fn_run_match($1, $2, $3::jsonb) AS run_id`,
-      [requirementId, userId, paramsJson]
-    );
-
-    const runId = res.rows[0].run_id;
-
-    // Generate Pros/Cons and explanations in service layer (D4, Gap G2)
-    await this.enrichRunExplanations(runId);
-
-    return { runId };
+    return withTransaction(async (client) => {
+      const owned = await client.query('SELECT id FROM club_requirement WHERE id = $1 AND user_id = $2', [requirementId, userId]);
+      if (!owned.rowCount) throw { code: 'REQUIREMENT_NOT_FOUND', message: 'Không tìm thấy nhu cầu tuyển trạch', status: 404 };
+      const res = await client.query(`SELECT fn_run_match($1, $2, $3::jsonb) AS run_id`, [requirementId, userId, JSON.stringify(overrideParams || {})]);
+      const runId = res.rows[0].run_id;
+      await this.enrichRunExplanations(runId, client);
+      return { runId };
+    }, { userId });
   }
 
-  static async getRunDetail(runId: string): Promise<MatchRunDetail | null> {
+  static async getRunDetail(runId: string, userId: number): Promise<MatchRunDetail | null> {
     const runRes = await query(
       `SELECT r.id, r.run_code, r.requirement_id, r.config_id, r.matrix_id,
               r.params_snapshot, r.summary, r.data_as_of, r.created_at
        FROM match_run r
-       WHERE r.id = $1`,
-      [runId]
+       WHERE r.id = $1 AND r.user_id = $2`,
+      [runId, userId]
     );
 
     if (runRes.rows.length === 0) return null;
@@ -133,8 +128,8 @@ export class MatchingService {
     };
   }
 
-  private static async enrichRunExplanations(runId: string): Promise<void> {
-    const results = await query(
+  private static async enrichRunExplanations(runId: string, client: any): Promise<void> {
+    const results = await client.query(
       `SELECT mr.id, mr.matching, mr.f_score, mr.s_score, mr.r_score,
               mr.requested_role_id, tr.name as role_name, mr.breakdown, mr.flags,
               p.name as player_name, fn_age(p.date_of_birth) as age
@@ -161,7 +156,7 @@ export class MatchingService {
         cons.push(`Chi phí chuyển nhượng hoặc mức lương tiệm cận mức trần của CLB`);
       }
 
-      if (bd.years_left !== undefined && bd.years_left <= 0.5) {
+      if (typeof bd.years_left === 'number' && bd.years_left <= 0.5) {
         pros.push(`Thời hạn hợp đồng còn dưới 6 tháng - Lợi thế đàm phán mức phí rẻ hoặc chuyển nhượng tự do`);
       }
 
@@ -200,7 +195,7 @@ export class MatchingService {
 
       const explanation = `Cầu thủ ${row.player_name} đạt ${matching.toFixed(1)} điểm Matching. Thế mạnh nổi bật nhất nằm ở ${dominantPillar}. Điểm thành phần: Tài chính F=${fScore.toFixed(1)}, Chiến thuật S=${sScore.toFixed(1)}, Rủi ro R=${rScore.toFixed(1)}.`;
 
-      await query(
+      await client.query(
         `UPDATE match_result
          SET pros = $1::jsonb, cons = $2::jsonb, explanation = $3
          WHERE id = $4`,

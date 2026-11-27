@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
-export default function PlayerDetailPage({ params }: { params: { id: string } }) {
+export default function PlayerDetailPage() {
+  const params = useParams<{ id: string }>();
   const [player, setPlayer] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [shortlistNote, setShortlistNote] = useState('');

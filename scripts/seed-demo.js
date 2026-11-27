@@ -17,7 +17,7 @@ async function seedDemoData() {
   console.log('Connecting to database...');
   const client = new pg.Client({
     connectionString,
-    ssl: { rejectUnauthorized: false },
+    ssl: connectionString && !/localhost|127\.0\.0\.1/.test(connectionString) ? { rejectUnauthorized: false } : undefined,
   });
 
   try {

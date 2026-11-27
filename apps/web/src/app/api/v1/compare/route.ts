@@ -1,9 +1,11 @@
 import { NextRequest } from 'next/server';
 import { MatchingService } from '@/services/matching.service';
 import { errorResponse, successResponse } from '@/lib/api-response';
+import { getAuthUser } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
+    if (!getAuthUser(request)) return errorResponse('UNAUTHORIZED', 'Vui lòng đăng nhập', 401);
     const { searchParams } = new URL(request.url);
     const rawIds = searchParams.get('playerIds') || '';
     const playerIds = rawIds

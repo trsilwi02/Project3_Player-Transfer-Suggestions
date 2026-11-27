@@ -35,6 +35,11 @@ export async function POST(request: NextRequest) {
     const created = await RequirementService.create(user.id, parsed.data, clientIp);
     return successResponse(created, undefined, 201);
   } catch (err: any) {
+    console.error('[requirements.create] Request failed', {
+      name: err?.name,
+      code: err?.code,
+      message: err?.message,
+    });
     return errorResponse(err.code || 'REQUIREMENT_CREATE_FAILED', err.message, err.status || 500);
   }
 }

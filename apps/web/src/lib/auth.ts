@@ -1,22 +1,34 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import argon2 from 'argon2';
 import { NextRequest } from 'next/server';
 import { AuthUser } from '@project3/shared';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-transfer-market-jwt-token-key-2026';
-const REFRESH_TOKEN_PEPPER = process.env.REFRESH_TOKEN_PEPPER || 'transfer-market-pepper-2026';
+function requiredSecret(name: 'JWT_SECRET' | 'REFRESH_TOKEN_PEPPER'): string {
+  const value = process.env[name];
+  if (!value || value.length < 32) throw new Error(`${name} must be configured with at least 32 characters`);
+  return value;
+}
 
 export const ACCESS_TOKEN_EXPIRY = '15m';
 export const REFRESH_TOKEN_DAYS = 30;
 
 export async function hashPassword(password: string): Promise<string> {
-  const salt = await bcrypt.genSalt(10);
-  return bcrypt.hash(password, salt);
+  return argon2.hash(password, { type: argon2.argon2id });
 }
 
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
+  if (hash.startsWith('$2')) return bcrypt.compare(password, hash);
+  try {
+    return await argon2.verify(hash, password);
+  } catch {
+    return false;
+  }
+}
+
+export function needsPasswordRehash(hash: string): boolean {
+  return hash.startsWith('$2');
 }
 
 export function signAccessToken(user: AuthUser): string {
@@ -28,14 +40,15 @@ export function signAccessToken(user: AuthUser): string {
       role: user.role,
       locale: user.locale,
     },
-    JWT_SECRET,
+    requiredSecret('JWT_SECRET'),
     { expiresIn: ACCESS_TOKEN_EXPIRY }
   );
 }
 
 export function verifyAccessToken(token: string): AuthUser | null {
+  const secret = requiredSecret('JWT_SECRET');
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, secret) as any;
     return {
       id: parseInt(decoded.sub, 10),
       username: decoded.username,
@@ -52,7 +65,7 @@ export function generateRefreshToken(): { token: string; hash: string; expiresAt
   const rawBytes = crypto.randomBytes(32).toString('hex');
   const hash = crypto
     .createHash('sha256')
-    .update(rawBytes + REFRESH_TOKEN_PEPPER)
+    .update(rawBytes + requiredSecret('REFRESH_TOKEN_PEPPER'))
     .digest('hex');
 
   const expiresAt = new Date();
@@ -64,7 +77,7 @@ export function generateRefreshToken(): { token: string; hash: string; expiresAt
 export function hashRefreshToken(rawToken: string): string {
   return crypto
     .createHash('sha256')
-    .update(rawToken + REFRESH_TOKEN_PEPPER)
+    .update(rawToken + requiredSecret('REFRESH_TOKEN_PEPPER'))
     .digest('hex');
 }
 

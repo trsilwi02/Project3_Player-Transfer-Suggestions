@@ -1,10 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 export default function MatchingStudioPage() {
+  return <Suspense fallback={<div className="p-8">Đang tải...</div>}><MatchingStudioContent /></Suspense>;
+}
+
+function MatchingStudioContent() {
   const searchParams = useSearchParams();
   const initialReqId = searchParams.get('requirementId') || '';
 

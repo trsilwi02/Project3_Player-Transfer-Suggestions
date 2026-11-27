@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { pool } from './pool.js';
+import { pool } from './pool';
 
 export interface AuditContext {
   userId?: number | null;

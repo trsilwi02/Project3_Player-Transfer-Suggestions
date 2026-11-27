@@ -1,23 +1,23 @@
-import { NextRequest } from 'next/server';
 import { query } from '@project3/db';
 import { errorResponse, successResponse } from '@/lib/api-response';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const startTime = Date.now();
     let dbStatus = 'ok';
+    let healthy = true;
     let dbLatencyMs = 0;
 
     try {
       const dbStart = Date.now();
       await query('SELECT 1');
       dbLatencyMs = Date.now() - dbStart;
-    } catch (err: any) {
-      dbStatus = `unreachable: ${err.message}`;
+    } catch {
+      dbStatus = 'unreachable';
+      healthy = false;
     }
 
     return successResponse({
-      status: 'healthy',
+      status: healthy ? 'healthy' : 'degraded',
       version: '1.0.0',
       timestamp: new Date().toISOString(),
       database: {
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         latencyMs: dbLatencyMs,
       },
       uptime: process.uptime(),
-    });
+    }, undefined, healthy ? 200 : 503);
   } catch (err: any) {
     return errorResponse('HEALTH_CHECK_FAILED', err.message, 500);
   }

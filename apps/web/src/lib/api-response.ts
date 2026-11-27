@@ -36,6 +36,19 @@ export function errorResponse(
   status: number = 400,
   details?: any
 ) {
+  if (/^[A-Z0-9]{5}$/.test(code)) {
+    const sqlState = code;
+    if (sqlState === 'P0002') return errorResponse('REQUIREMENT_NOT_FOUND', 'Không tìm thấy dữ liệu yêu cầu', 404);
+    if (sqlState === 'P0001' && /UNSUPPORTED_POSITION/.test(message || '')) {
+      return errorResponse('UNSUPPORTED_POSITION', 'Vị trí này chưa được hỗ trợ chấm điểm', 422);
+    }
+    return errorResponse('INTERNAL_ERROR', 'Đã xảy ra lỗi khi xử lý yêu cầu', 500);
+  }
+  if (status >= 500) {
+    code = 'INTERNAL_ERROR';
+    message = 'Đã xảy ra lỗi khi xử lý yêu cầu';
+    details = undefined;
+  }
   const body: ApiErrorPayload = {
     error: {
       code,

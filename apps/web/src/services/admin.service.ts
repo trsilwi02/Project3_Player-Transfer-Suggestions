@@ -53,10 +53,14 @@ export class AdminService {
 
   static async activateScoringConfig(configId: number, userId: number, clientIp: string) {
     return withTransaction(async (client) => {
+      const config = await client.query(`SELECT id, role_matrix_id FROM scoring_config WHERE id = $1 FOR UPDATE`, [configId]);
+      if (!config.rowCount) throw { code: 'CONFIG_NOT_FOUND', message: 'Không tìm thấy cấu hình', status: 404 };
+      const validation = await client.query(`SELECT count(*) AS invalid_count FROM fn_validate_matrix($1) WHERE NOT ok`, [config.rows[0].role_matrix_id]);
+      if (Number(validation.rows[0]?.invalid_count) > 0) throw { code: 'INVALID_CONFIG', message: 'Ma trận trọng số không hợp lệ', status: 422 };
       // Config guard will enforce: cannot edit or reactivate used configs irregularly
       await client.query(`UPDATE scoring_config SET status = 'deprecated' WHERE status = 'active'`);
       await client.query(`UPDATE scoring_config SET status = 'active' WHERE id = $1`, [configId]);
-      return { success: true, activatedId: configId };
+      return { success: true, activatedId: configId, preview: validation.rows };
     }, { userId, clientIp });
   }
 
